@@ -15,6 +15,9 @@ bin/
 obj/
 ipch/
 *.aps
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
 
 # Object files, libraries, and executables
 *.o
