@@ -1,0 +1,42 @@
+# User-specific settings
+*.user
+*.suo
+*.sln.docstates
+
+# Visual Studio 2022+ folder for user settings
+.vs/
+
+# Standard VS output directories
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+bin/
+obj/
+ipch/
+*.aps
+
+# Object files, libraries, and executables
+*.o
+*.obj
+*.exe
+*.dll
+*.lib
+*.so
+*.a
+
+Program Database files (debugging symbols)
+*.pdb
+*.ilk
+
+Temporary backup files
+*.~
+*.bak
+
+Intellisense/Precompiled headers
+*.pch
+*.idb
+*.tlog
+
+# Git history file
+.git/

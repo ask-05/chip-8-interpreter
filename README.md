@@ -1,0 +1,21 @@
+
+# CHIP-8 Emulator (In Progress)
+
+A basic CHIP-8 Emulator designed in C++ and SDL3.
+
+
+## Download Instructions
+Download the **SDL3** development libraries and set its path in your project settings. Make sure to move the SDL3.lib file to the CHIP-8-Emulator folder as well.
+
+Clone the repo:
+
+Instructions for building this project will be available once a Basic Version has been developed. This project was made in Visual Studio Community 2022, so opening the .sln file should allow you to run the project easily.
+
+    
+## Resources
+
+These resources were very helpful:
+
+- https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
+- https://wiki.libsdl.org/SDL3/FrontPage
+- http://en.wikipedia.org/wiki/CHIP-8
