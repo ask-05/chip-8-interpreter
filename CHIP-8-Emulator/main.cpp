@@ -1,27 +1,30 @@
-#define SDL_MAIN_USE_CALLBACKS 1
+// #define SDL_MAIN_USE_CALLBACKS 1
 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-
+#include <bitset>
 
 
 using namespace std;
 
 // VARIABLE DECLARATION
-uint16_t opcode; // opcode = operational code. codes that when decoded, tell us a specific task (confirm))
-uint8_t memory[4096]; // this is basically the ram. 4K ram.
+uint16_t opcode; // opcode = operational code. codes that when decoded, tell us a specific task (confirm)
+uint8_t memory[4096]; // this is basically the ram.
 uint8_t V[16]; // variable registers V0-VF. VF is a flag register.
-uint16_t I; // index register. points at locations in memory.
+uint16_t I = 0; // index register. points at locations in memory.
 uint16_t pc; // program counter. points to current instruction in memory
 uint16_t stack[16]; // stack. stores PC addresses to return from subroutines
-uint8_t sp; // stack pointer
-uint8_t delay_timer; // decremnted at 60hz until it reaches 0.
+uint8_t sp = 0; // stack pointer
+uint8_t delay_timer; // decremented at 60hz until it reaches 0.
 uint8_t sound_timer; // same as delay_timer but it gives off a beeping sound as long as it's not 0.
 
-uint32_t display[64 * 32]; // SDL display
+uint64_t display[32]; // SDL display. 32 lines
+
+constexpr int CHIP8_WIDTH = 64;
+constexpr int CHIP8_HEIGHT = 32;
 
 //STORING AND LOADING FONT
 uint8_t chip8_fontset[80] = {
@@ -43,6 +46,8 @@ uint8_t chip8_fontset[80] = {
 	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 };
 
+
+// prints out 8 bit binary
 string to_binary_string(unsigned char val) {
 	string binaryString = "";
 
@@ -58,47 +63,234 @@ string to_binary_string(unsigned char val) {
 	return binaryString;
 }
 
+// Struct for SDL makes it easy to use
+struct SDLWindow {
+	SDL_Window* window = NULL;
+	SDL_Renderer* renderer = NULL;
+	SDL_Texture* texture = NULL;
+	SDL_Event event;
 
-SDL_Window* window = NULL;
+	const uint32_t PIXEL_ON = 0xFFFFFFFF;
+	const uint32_t PIXEL_OFF = 0xFF000000;
 
-SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
-	if (!SDL_Init(SDL_INIT_VIDEO)) {
-		return SDL_APP_FAILURE;
+	bool running = true;
+
+	SDLWindow() {
+		if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+			cerr << "SDL_Init failed: " << SDL_GetError() << endl;
+			running = false;
+			return;
+		}
+
+		window = SDL_CreateWindow("CHIP-8 Emulator", 640, 320, SDL_WINDOW_RESIZABLE);
+		if (window == NULL) {
+			cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << endl;
+			running = false;
+			return;
+		}
+
+		renderer = SDL_CreateRenderer(window, NULL);
+		if (renderer == NULL) {
+			cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << endl;
+			running = false;
+			return;
+		}
+
+		texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, CHIP8_WIDTH, CHIP8_HEIGHT);
+		if (texture == NULL) {
+			cerr << "Texture could not be created! SDL_Error: " << SDL_GetError() << endl;
+			running = false;
+			return;
+		}
+
+		if (!SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST)) {
+			cerr << "Could not scale texture! SDL_Error: " << SDL_GetError() << endl;
+		}
+
 	}
+
+	~SDLWindow() {
+		SDL_Quit();
+	}
+
+	// Renders by locking the texture (the entire screen), changing whatever pixels need to be changed, then unlocks the texture
+	void renderScreen() {
+		if (!texture || !renderer) {
+			cerr << "renderScreen aborted: texture=" << texture << " renderer=" << renderer << endl;
+			return;
+		}
+
+		void* pixels_ptr = nullptr; // When returned, it points to the pixels that need to be locked
+		int pitch = 0; // When returned, it holds the length of one row in bytes
+		int lockResult = SDL_LockTexture(texture, NULL, &pixels_ptr, &pitch); // Returns the correct pitch and pixels_ptr
+		if (lockResult == 0) { 
+			cerr << "SDL_LockTexture failed. SDL_GetError(): '" << SDL_GetError() << "'" << endl;
+			return;
+		}
+
+		uint32_t* texture_pixels = static_cast<uint32_t*>(pixels_ptr);
+
+		// Each display[y] contains one line of 32 pixels
+		for (int y = 0; y < 32; y++) {
+			for (int x = 0; x < 64; x++) {
+				// For each x position, find which bit in display[y] corresponds to it
+				uint64_t line = display[y];          
+				int bit_position = 63 - x;    
+				uint64_t bit = (line >> bit_position) & 1;  // Extract the bit we want
+
+				// Calculate pixel position in texture using pitch
+				int pixel_offset = y * (pitch / sizeof(uint32_t)) + x;
+				texture_pixels[pixel_offset] = bit ? PIXEL_ON : PIXEL_OFF;
+				
+				
+			}
+		}
+
+		SDL_UnlockTexture(texture);
+
+		SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+		SDL_RenderClear(renderer);
+		SDL_RenderTexture(renderer, texture, nullptr, nullptr);
+		SDL_RenderPresent(renderer); // Applies the changes done
+	}
+
+	void incPC() {
+		pc += 2;
+	}
+
+	// Main SDL Loop
+	void SDLLoop() {
+		pc = 0x200; // Sets initial Program Count
+ 		while (running) {
+			SDL_PollEvent(&event);
+				// Fetch Decode Execute Cycle
+				opcode = (memory[pc] << 8) | memory[pc + 1]; // Fetches next opcode from memory
+			//cout << "Opcode = " << std::hex << opcode << std::dec << endl;
+
+			if ((opcode >> 12) == 1) { // 1NNN (jump)
+				pc = opcode & 0x0FFF;
+			}
+			else if ((opcode >> 12) == 6) { // 6XNN (set register vx)
+				V[(opcode & 0x0F00) >> 8] = (uint8_t)opcode;
+				incPC();
+			}
+			else if ((opcode >> 12) == 7) { // 7NNN (add value to register vx)
+				V[(opcode >> 8) ^ 0x0070] += (uint8_t)opcode;
+				incPC();
+			}
+			else if ((opcode >> 12) == 0xA) { //ANNN (set index register I)
+				I = (opcode & 0x0FFF);
+				incPC();
+			}
+			else if ((opcode >> 12) == 0xD) { // DXYN (draws to display)
+				uint8_t xCoord = V[(opcode & 0x0F00) >> 8] % CHIP8_WIDTH;
+				uint8_t yCoord = V[(opcode & 0x00F0) >> 4] % CHIP8_HEIGHT;
+				int N = opcode & 0x000F; // Height of Sprite
+				V[0xF] = 0; // VF flag set to 0
+
+				for (int i = 0; i < N; ++i) {
+					uint8_t spriteByte = memory[I + i];
+					uint8_t drawY = (yCoord + i);
+
+					if (drawY >= CHIP8_HEIGHT) {
+						cout << "broken!" << endl;
+						break;
+					}
+
+					if (xCoord + 8 > CHIP8_WIDTH) {
+						cout << "clipping!" << endl;
+						uint8_t pixelsToClip = (xCoord + 8) - CHIP8_WIDTH;
+						if (pixelsToClip > 0) {
+							spriteByte &= (0xFF << pixelsToClip); // Clears bits that go over screen boundary
+						}
+					}
+
+					int shiftAmount = CHIP8_WIDTH - 8 - xCoord; // Shifts 8 bit sprite into the display row
+					uint64_t spriteVal = ((uint64_t)spriteByte) << shiftAmount;
+					if (display[drawY] & spriteVal) {
+						V[0xF] = 1;
+					}
+					display[drawY] ^= spriteVal;
+
+
+
+				}
+
+				renderScreen();
+				incPC();
+			}
+			else {
+				switch (opcode) {
+				case 0x00E0: // 0x00E0 (clear screen)
+					for (int i = 0; i < 32; ++i) {
+						display[i] = 0;
+					}
+					renderScreen();
+					// cout << "Cleared screen!";
+					incPC();
+					break;
+
+				}
+			}
+
+
+			if (event.type == SDL_EVENT_QUIT) {
+				running = false;
+			}
+			else if (event.type == SDL_EVENT_KEY_DOWN) {
+				if (event.key.key >= 49 && event.key.key <= 57) {
+					cout << "KEY NUMBER: " << event.key.key << endl;
+					for (int i = 0; i <= 4; i++) { // This loop draws 0-9 on the screen
+						display[i] = (uint64_t)memory[(0x50 + i) + (5 * (event.key.key - 48))] << 56;
+					}
+					renderScreen();
+					cout << "\n-------------\n";
+				}
+				else if (event.key.key == 48) {
+					opcode = 0x1ABC;
+				}
+			}
+
+		}
+	}
+};
+
+int main(int argc, char* argv[]) {
+
+	//Loading fontset to memory
 	for (int i = 0; i < 80; ++i) {
 		memory[0x50 + i] = chip8_fontset[i];
 	}
 
-	window = SDL_CreateWindow("CHIP-8 Emulator", 640, 320, SDL_WINDOW_RESIZABLE);
+	const unsigned short MAX_ROM_SIZE = 4096 - 512;
 
-	return SDL_APP_CONTINUE;
-}
 
-SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event *event) {
-	if (event->type == SDL_EVENT_QUIT) {
-		return SDL_APP_SUCCESS;
+	// Loading ROM
+	ifstream ROM("ibm.ch8", ios::binary);
+	if (!ROM.is_open()) {
+		cerr << "Error opening the file!" << endl;
+		return 1;
 	}
-	else if (event->type == SDL_EVENT_KEY_DOWN) {
-		if (event->key.key >= 48 && event->key.key <= 57) {
-			cout << "KEY NUMBER: " << event->key.key << endl;
-			for (int i = 0; i <= 4; i++) {
-				cout << to_binary_string(memory[(0x50 + i) + (5*(event->key.key - 48))]) << endl;	
-			}
-			cout << "\n-------------\n";
-		}
+
+	// Checking ROM Size
+	ROM.seekg(0, ios::end);
+	streampos rom_size = ROM.tellg();
+	ROM.seekg(0, ios::beg);
+
+	int rom_bytes = static_cast<int>(rom_size);
+
+	if (rom_size > MAX_ROM_SIZE) {
+		cerr << "ROM File Size (" << rom_bytes << " bytes) is too big!";
+			return 2;
 	}
-	else if (event->type == SDL_EVENT_FINGER_DOWN) {
-		SDL_Log("x = %f, y = %f", event->tfinger.x, event->tfinger.y);
-	}
-	return SDL_APP_CONTINUE;
-}
 
-SDL_AppResult SDL_AppIterate(void* appstate) {
-	
-	return SDL_APP_CONTINUE;
-}
+	ROM.read(reinterpret_cast<char*>(&memory[0x200]), rom_bytes);
 
-void SDL_AppQuit(void* appstate, SDL_AppResult result) {
-	SDL_Quit();
-}
+	ROM.close();
 
+	// Loading SDL Window. All Control then goes to SDLLoop
+	SDLWindow SDLWin;
+	SDLWin.SDLLoop();
+
+	return 0;
+}
