@@ -5,11 +5,11 @@ A basic CHIP-8 Emulator designed in C++ and SDL3.
 
 
 ## Download Instructions
-Download the **SDL3** development libraries and set its path in your project settings. Make sure to move the SDL3.lib file to the CHIP-8-Emulator folder as well.
+Download the **SDL3** development libraries and set its path in your project settings. Make sure to move the SDL3.lib file to the src folder as well.
 
-Clone the repo:
+Clone the repo and run main.cpp. This will automatically run the IBM program.
 
-Instructions for building this project will be available once a Basic Version has been developed. This project was made in Visual Studio Community 2022, so opening the .sln file should allow you to run the project easily.
+Instructions for building this project will be available once a Basic Version has been developed.
 
     
 ## Resources

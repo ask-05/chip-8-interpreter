@@ -313,7 +313,7 @@ int main(int argc, char* argv[]) {
 
 
 	// Loading ROM
-	ifstream ROM("ibm.ch8", ios::binary);
+	ifstream ROM("./assets/roms/ibm.ch8", ios::binary);
 	if (!ROM.is_open()) {
 		cerr << "Error opening the file!" << endl;
 		return 1;

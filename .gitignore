@@ -23,7 +23,7 @@ ipch/
 *.o
 *.obj
 *.exe
-*.dll
+# *.dll
 *.lib
 *.so
 *.a
