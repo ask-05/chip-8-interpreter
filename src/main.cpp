@@ -14,10 +14,10 @@ using namespace std;
 uint16_t opcode; // opcode = operational code. codes that when decoded, tell us a specific task (confirm)
 uint8_t memory[4096]; // this is basically the ram.
 uint8_t V[16]; // variable registers V0-VF. VF is a flag register.
-uint16_t I = 0; // index register. points at locations in memory.
+uint16_t I; // index register. points at locations in memory.
 uint16_t pc; // program counter. points to current instruction in memory
 uint16_t stack[16]; // stack. stores PC addresses to return from subroutines
-uint8_t sp = 0; // stack pointer
+uint8_t sp; // stack pointer
 uint8_t delay_timer; // decremented at 60hz until it reaches 0.
 uint8_t sound_timer; // same as delay_timer but it gives off a beeping sound as long as it's not 0.
 
@@ -106,6 +106,7 @@ struct SDLWindow {
 		if (!SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST)) {
 			cerr << "Could not scale texture! SDL_Error: " << SDL_GetError() << endl;
 		}
+		
 
 	}
 
@@ -160,15 +161,47 @@ struct SDLWindow {
 
 	// Main SDL Loop
 	void SDLLoop() {
-		pc = 0x200; // Sets initial Program Count
+		// Setting initial value
+		pc = 0x200;
  		while (running) {
 			SDL_PollEvent(&event);
 				// Fetch Decode Execute Cycle
 				opcode = (memory[pc] << 8) | memory[pc + 1]; // Fetches next opcode from memory
-			//cout << "Opcode = " << std::hex << opcode << std::dec << endl;
 
 			if ((opcode >> 12) == 1) { // 1NNN (jump)
 				pc = opcode & 0x0FFF;
+			}
+			else if ((opcode >> 12) == 2) { // 2NNN (call)
+				sp++;
+				stack[sp] = opcode + 2; // Stores address of next opcode
+				pc = opcode & 0x0FFF;
+			}
+			else if ((opcode >> 12) == 3) { // 3XNN Skip if V[X] = NN
+				if ((opcode & 0x00FF) == V[opcode & 0x0F00 >> 8]) {
+					incPC();
+					incPC();
+				}
+				else {
+					incPC();
+				}
+			}
+			else if ((opcode >> 12) == 4) { // 4XNN Skip if V[X] != NN
+				if ((opcode & 0x00FF) != V[opcode & 0x0F00 >> 8]) {
+					incPC();
+					incPC();
+				}
+				else {
+					incPC();
+				}
+			}
+			else if ((opcode >> 12) == 5) { // 5XY0 Skip if V[X] = V[Y]
+				if ((opcode & 0x0F00 >> 8) == V[opcode & 0x00F0 >> 4]) {
+					incPC();
+					incPC();
+				}
+				else {
+					incPC();
+				}
 			}
 			else if ((opcode >> 12) == 6) { // 6XNN (set register vx)
 				V[(opcode & 0x0F00) >> 8] = (uint8_t)opcode;
@@ -177,6 +210,15 @@ struct SDLWindow {
 			else if ((opcode >> 12) == 7) { // 7NNN (add value to register vx)
 				V[(opcode >> 8) ^ 0x0070] += (uint8_t)opcode;
 				incPC();
+			}
+			else if ((opcode >> 12) == 9) { // 9XY0 Skip if V[X] != V[Y]
+				if ((opcode & 0x0F00 >> 8) != V[opcode & 0x00F0 >> 4]) {
+					incPC();
+					incPC();
+				}
+				else {
+					incPC();
+				}
 			}
 			else if ((opcode >> 12) == 0xA) { //ANNN (set index register I)
 				I = (opcode & 0x0FFF);
@@ -221,14 +263,19 @@ struct SDLWindow {
 			}
 			else {
 				switch (opcode) {
-				case 0x00E0: // 0x00E0 (clear screen)
-					for (int i = 0; i < 32; ++i) {
-						display[i] = 0;
-					}
-					renderScreen();
-					// cout << "Cleared screen!";
-					incPC();
-					break;
+					case 0x00E0: // 0x00E0 (clear screen)
+						for (int i = 0; i < 32; ++i) {
+							display[i] = 0;
+						}
+						renderScreen();
+						incPC();
+						break;
+					case 0x00EE:
+						pc = stack[sp];
+						sp--;
+						break;
+					default:
+						cout << "opcode " << opcode << " not found!" << endl;
 
 				}
 			}
