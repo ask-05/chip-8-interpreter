@@ -97,10 +97,6 @@ void CHIP8::writeToLog(const string& message) {
         log_file << message << endl;
         log_file.flush();  // Flush to ensure data is written immediately
     }
-    // Print to console if debug mode is on
-    if (DEBUG_OPCODES) {
-        cout << message << endl;
-    }
 }
 
 // Constructor
@@ -143,7 +139,7 @@ CHIP8::~CHIP8() {
 bool CHIP8::loadROM(const char* filename) {
     ifstream ROM(filename, ios::binary);
     if (!ROM.is_open()) {
-    writeToLog(string("Error: Could not open ROM file: ") + filename);
+        writeToLog(string("Error: Could not open ROM file: ") + filename);
         return false;
     }
     
@@ -159,13 +155,13 @@ bool CHIP8::loadROM(const char* filename) {
         writeToLog("Error: ROM file is empty!");
         ROM.close();
         return false;
- }
+    }
     
     if (rom_bytes > MAX_ROM_SIZE) {
         stringstream ss;
-   ss << "Error: ROM File Size (" << rom_bytes << " bytes) is too big! Max size: " << MAX_ROM_SIZE << " bytes";
+        ss << "Error: ROM File Size (" << rom_bytes << " bytes) is too big! Max size: " << MAX_ROM_SIZE << " bytes";
         writeToLog(ss.str());
-    ROM.close();
+        ROM.close();
         return false;
     }
     
@@ -187,10 +183,13 @@ void CHIP8::incPC() {
     pc += 2;
 }
 
-// Displays opcodes in terminal if debug mode is enabled
+// Displays opcodes in terminal and in log file if debug mode is enabled
 void CHIP8::logOpcode(uint16_t op) { 
     if (DEBUG_OPCODES) {
-    cout << "Opcode: 0x" << hex << setfill('0') << setw(4) << op << dec << setfill(' ') << endl;
+        stringstream debugOpcode;
+        debugOpcode << "Opcode: 0x" << hex << setfill('0') << setw(4) << op << dec << setfill(' ') << endl;
+        cout << debugOpcode.str();
+        writeToLog(debugOpcode.str());
     }
 }
 
@@ -348,6 +347,7 @@ void CHIP8::execute_opcode() {
                 incPC();
                 break;
             case 0x6: // 8XY6: Shift V[X] one bit to the right
+                V[VX] = V[VY]; // Added classic quirk
                 V[0xF] = V[VX] & 0x1;
                 V[VX] >>= 1;
                 incPC();
@@ -358,6 +358,7 @@ void CHIP8::execute_opcode() {
                 incPC();
                 break;
             case 0xE: // 8XYE: Shift V[X] one bit to the left
+                V[VX] = V[VY]; // Added classic quirk
                 V[0xF] = (V[VX] & 0x80) >> 7;
                 V[VX] <<= 1;
                 incPC();
@@ -408,9 +409,7 @@ void CHIP8::execute_opcode() {
             }
             if (xCoord + 8 > CHIP8_WIDTH) {
                 uint8_t pixelsToClip = (xCoord + 8) - CHIP8_WIDTH; // One sprite is 8 bits. If xCoord was 62, 62 + 8 = 70 which is larger than 64.  6 bits need to be clipped.
-                if (pixelsToClip > 0) {
-                    spriteByte &= (0xFF << pixelsToClip); // So, it would clip the 6 rightmost bits.
-                }
+                spriteByte &= (0xFF << pixelsToClip); // So, it would clip the 6 rightmost bits.
             }
             int shiftAmount = CHIP8_WIDTH - 8 - xCoord; // The amount to shift so it fits into the 64 bit display array.
             uint64_t spriteVal = ((uint64_t)spriteByte) << shiftAmount;
@@ -495,6 +494,9 @@ void CHIP8::execute_opcode() {
             }
             break;
             case 0x29: // FX29: Set I to the location of the sprite data for digit V[X].
+                if (V[VX] > 0xF) {
+                    cerr << "Warning: FX29 - V[X] value (" << (int)V[VX] << ") exceeds valid font digit range (0-15)" << endl;
+                }
                 I = FONTSET_START + (V[VX] * 5);
                 incPC();
                 break;
