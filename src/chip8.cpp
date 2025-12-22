@@ -347,7 +347,7 @@ void CHIP8::execute_opcode() {
                 incPC();
                 break;
             case 0x6: // 8XY6: Shift V[X] one bit to the right
-                V[VX] = V[VY]; // Added classic quirk
+                //V[VX] = V[VY]; //classic quirk
                 V[0xF] = V[VX] & 0x1;
                 V[VX] >>= 1;
                 incPC();
@@ -358,7 +358,7 @@ void CHIP8::execute_opcode() {
                 incPC();
                 break;
             case 0xE: // 8XYE: Shift V[X] one bit to the left
-                V[VX] = V[VY]; // Added classic quirk
+                //V[VX] = V[VY]; // classic quirk
                 V[0xF] = (V[VX] & 0x80) >> 7;
                 V[VX] <<= 1;
                 incPC();
@@ -412,7 +412,14 @@ void CHIP8::execute_opcode() {
                 spriteByte &= (0xFF << pixelsToClip); // So, it would clip the 6 rightmost bits.
             }
             int shiftAmount = CHIP8_WIDTH - 8 - xCoord; // The amount to shift so it fits into the 64 bit display array.
-            uint64_t spriteVal = ((uint64_t)spriteByte) << shiftAmount;
+            // uint64_t spriteVal = ((uint64_t)spriteByte) << shiftAmount;
+            uint64_t spriteVal;
+            if (shiftAmount >= 0) {
+                spriteVal = ((uint64_t)spriteByte) << shiftAmount;
+            }
+            else {
+                spriteVal = ((uint64_t)spriteByte) >> (-shiftAmount);
+            }
             if (display[drawY] & spriteVal) { // Checks for collisions
                 V[0xF] = 1;
             }
@@ -526,6 +533,7 @@ void CHIP8::execute_opcode() {
                 for (int i = 0; i <= VX; ++i) {
                     memory[I + i] = V[i];
                 }
+                //I += VX + 1; // classic behaviour
                 incPC();
             }
         break;
@@ -540,6 +548,8 @@ void CHIP8::execute_opcode() {
             for (int i = 0; i <= VX; ++i) {
                 V[i] = memory[I + i];
             }
+
+            //I += VX + 1; // classic behaviour
             incPC();
         }
         break;
