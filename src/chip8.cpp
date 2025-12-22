@@ -150,7 +150,7 @@ bool CHIP8::loadROM(const char* filename) {
     
     int rom_bytes = static_cast<int>(rom_size);
     const unsigned short MAX_ROM_SIZE = MEMORY_SIZE - PROGRAM_START;
-  
+    
     if (rom_bytes == 0) {
         writeToLog("Error: ROM file is empty!");
         ROM.close();
@@ -168,7 +168,7 @@ bool CHIP8::loadROM(const char* filename) {
     // Read ROM into memory
     ROM.read(reinterpret_cast<char*>(&memory[PROGRAM_START]), rom_bytes);
     ROM.close();
-
+    
     rom_loaded = true;
     
     stringstream ss;
@@ -409,17 +409,12 @@ void CHIP8::execute_opcode() {
             }
             if (xCoord + 8 > CHIP8_WIDTH) {
                 uint8_t pixelsToClip = (xCoord + 8) - CHIP8_WIDTH; // One sprite is 8 bits. If xCoord was 62, 62 + 8 = 70 which is larger than 64.  6 bits need to be clipped.
-                spriteByte &= (0xFF << pixelsToClip); // So, it would clip the 6 rightmost bits.
+                if (pixelsToClip > 0) {
+                    spriteByte &= (0xFF << pixelsToClip); // So, it would clip the 6 rightmost bits.
+                }
             }
             int shiftAmount = CHIP8_WIDTH - 8 - xCoord; // The amount to shift so it fits into the 64 bit display array.
-            // uint64_t spriteVal = ((uint64_t)spriteByte) << shiftAmount;
-            uint64_t spriteVal;
-            if (shiftAmount >= 0) {
-                spriteVal = ((uint64_t)spriteByte) << shiftAmount;
-            }
-            else {
-                spriteVal = ((uint64_t)spriteByte) >> (-shiftAmount);
-            }
+            uint64_t spriteVal = ((uint64_t)spriteByte) << shiftAmount;
             if (display[drawY] & spriteVal) { // Checks for collisions
                 V[0xF] = 1;
             }
@@ -674,7 +669,7 @@ void CHIP8::run() {
             void* pixels_ptr = nullptr;
             int pitch = 0;
             int lockResult = SDL_LockTexture(texture, NULL, &pixels_ptr, &pitch); // Locks entire screen and returns updated pitch and pixels_ptr
-     
+            
             if (lockResult != 0) {
                 uint32_t* texture_pixels = static_cast<uint32_t*>(pixels_ptr);
        
@@ -703,18 +698,18 @@ void CHIP8::run() {
 
             
         }
-
+      
         // Maintain clock speed by only executing one cpu instruction every 1 ms
         auto current_time = high_resolution_clock::now();
         auto elapsed = duration_cast<microseconds>(current_time - last_cycle_time).count();
         int desired_cycle_time_us = (500000 / CLOCK_SPEED); // Should be 1000000 but 500000 felt better for me. Adjust as needed
-
+  
         if (elapsed < desired_cycle_time_us) {
             SDL_Delay((desired_cycle_time_us - elapsed) / 1000); // Delays to ensure each instruction is executed every 1 ms.
         }
         last_cycle_time = high_resolution_clock::now();
     }
-
+    
     // Clean up SDL resources
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
